@@ -1,12 +1,14 @@
-# InfoContainer — etapas 1 y 2
+# InfoContainer — etapas 1, 2 y 3
 
-Plugin WordPress para registrar contenedores, inspecciones manuales y fotografías privadas mediante una API REST protegida. Esta entrega cubre inventario, venta, recepción y entrega. IA, PDF, interfaz administrativa y aplicación Android corresponden a etapas posteriores.
+Plugin WordPress para registrar contenedores, inspecciones manuales, fotografías privadas y propuestas de IA sujetas a revisión humana mediante una API REST protegida. PDF, interfaz administrativa y aplicación Android corresponden a etapas posteriores.
 
-- Plugin: `1.2.0`.
-- Esquema de datos: `1.1.0`, guardado en la opción `infocontainer_db_version`.
+- Plugin: `1.3.0`.
+- Esquema de datos: `1.2.0`, guardado en la opción `infocontainer_db_version`.
 - Requisitos mínimos: WordPress `6.0` y PHP `7.4`.
 - Sin dependencias externas.
 - Repositorio: <https://github.com/mucacran/infocontainer>.
+
+La configuración OpenAI, contratos, confirmación humana, cuotas, vigencia y pruebas de esta etapa están en [docs/etapa-3.md](docs/etapa-3.md).
 
 ## Archivos y datos
 

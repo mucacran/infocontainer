@@ -266,6 +266,41 @@ class InfoContainer_Photo_Storage {
 		return $this->error( 'storage_failed', 'No se pudo guardar la fotografía.', 500 );
 	}
 
+	/** Store an identification upload privately until its provider call ends. */
+	public function store_temporary( array $validated ) {
+		$key = $this->store( $validated );
+		if ( is_wp_error( $key ) ) { return $key; }
+		$root = $this->root();
+		$directory = is_wp_error( $root ) ? $root : $this->directory( $root, 'ai-temp' );
+		if ( is_wp_error( $directory ) ) { $this->delete( $key ); return $directory; }
+		$temp_key = 'ai-temp/' . basename( $key );
+		$source = $this->key_path( $key );
+		$target = $this->key_path( $temp_key );
+		if ( is_wp_error( $source ) || is_wp_error( $target ) || ! @rename( $source, $target ) || ! $this->verified_file( $root, $target ) ) {
+			$this->delete( $key );
+			return $this->error( 'storage_failed', 'No se pudo preparar la fotografia temporal.', 500 );
+		}
+		return $temp_key;
+	}
+
+	/** Remove a bounded number of interrupted-run files after a one-hour grace period. */
+	public function cleanup_ai_temporaries( $max_files = 20, $minimum_age = 3600 ) {
+		$root = $this->root();
+		$directory = is_wp_error( $root ) ? $root : $this->directory( $root, 'ai-temp' );
+		if ( is_wp_error( $directory ) ) { return $directory; }
+		$entries = @scandir( $directory );
+		if ( ! is_array( $entries ) ) { return true; }
+		$removed = 0;
+		foreach ( $entries as $name ) {
+			if ( $removed >= max( 1, min( 100, (int) $max_files ) ) || ! preg_match( '/\A[a-f0-9]{64}\.(?:jpg|png|webp)\z/', $name ) ) { continue; }
+			$key = 'ai-temp/' . $name; $path = $this->key_path( $key );
+			if ( is_wp_error( $path ) || is_link( $path ) ) { continue; }
+			$mtime = @filemtime( $path );
+			if ( false !== $mtime && $mtime < time() - max( 600, (int) $minimum_age ) && true === $this->delete( $key ) ) { ++$removed; }
+		}
+		return true;
+	}
+
 	/**
 	 * Open a contained regular file for authenticated streaming.
 	 *
@@ -411,7 +446,7 @@ class InfoContainer_Photo_Storage {
 
 	/** @return string|WP_Error */
 	private function key_path( $key ) {
-		if ( ! is_string( $key ) || ! preg_match( '#\A(?:photos|trash)/[a-f0-9]{64}\.(?:jpg|png|webp)\z#', $key ) ) {
+		if ( ! is_string( $key ) || ! preg_match( '#\A(?:photos|trash|ai-temp)/[a-f0-9]{64}\.(?:jpg|png|webp)\z#', $key ) ) {
 			return $this->error( 'file_unavailable', 'No se pudo acceder a la fotografía.', 500 );
 		}
 		$root = $this->root();
@@ -463,9 +498,9 @@ class InfoContainer_Photo_Storage {
 		return $this->normalize_path( $actual ) . ( $missing ? '/' . implode( '/', $missing ) : '' );
 	}
 
-	/** Ensure a photos/trash directory cannot escape through a symlink. */
+	/** Ensure a managed private directory cannot escape through a symlink. */
 	private function directory( $root, $name ) {
-		if ( ! in_array( $name, array( 'photos', 'trash' ), true ) ) {
+		if ( ! in_array( $name, array( 'photos', 'trash', 'ai-temp' ), true ) ) {
 			return $this->configuration_error();
 		}
 		$path = $root . '/' . $name;

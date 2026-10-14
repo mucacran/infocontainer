@@ -3,7 +3,7 @@
  * Plugin Name:       InfoContainer
  * Plugin URI:        https://github.com/mucacran/infocontainer
  * Description:       Contenedores, inspecciones y fotografías privadas mediante una API REST protegida.
- * Version:           1.2.0
+ * Version:           1.3.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            mucacran
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'INFOCONTAINER_VERSION', '1.2.0' );
+define( 'INFOCONTAINER_VERSION', '1.3.0' );
 define( 'INFOCONTAINER_FILE', __FILE__ );
 define( 'INFOCONTAINER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'INFOCONTAINER_URL', plugin_dir_url( __FILE__ ) );
@@ -29,6 +29,10 @@ require_once INFOCONTAINER_PATH . 'includes/class-infocontainer-rest-api.php';
 require_once INFOCONTAINER_PATH . 'includes/class-infocontainer-photo-storage.php';
 require_once INFOCONTAINER_PATH . 'includes/class-infocontainer-photo-repository.php';
 require_once INFOCONTAINER_PATH . 'includes/class-infocontainer-photo-rest-api.php';
+require_once INFOCONTAINER_PATH . 'includes/class-infocontainer-ai-schemas.php';
+require_once INFOCONTAINER_PATH . 'includes/class-infocontainer-openai-client.php';
+require_once INFOCONTAINER_PATH . 'includes/class-infocontainer-ai-repository.php';
+require_once INFOCONTAINER_PATH . 'includes/class-infocontainer-ai-rest-api.php';
 
 /**
  * Runs when the plugin is activated.
@@ -88,4 +92,11 @@ function infocontainer_register_rest_routes() {
 	$api->register_routes();
 	$photos = new InfoContainer_Photo_REST_API( new InfoContainer_Photo_Repository(), new InfoContainer_Photo_Storage() );
 	$photos->register_routes();
+	$ai = new InfoContainer_AI_REST_API(
+		new InfoContainer_AI_Repository(),
+		new InfoContainer_OpenAI_Client(),
+		new InfoContainer_Photo_Storage(),
+		new InfoContainer_Photo_Repository()
+	);
+	$ai->register_routes();
 }

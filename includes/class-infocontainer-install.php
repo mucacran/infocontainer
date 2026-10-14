@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class InfoContainer_Install {
-	const DB_VERSION = '1.1.0';
+	const DB_VERSION = '1.2.0';
 	const VERSION_OPTION = 'infocontainer_db_version';
 	const CAPABILITY = 'manage_infocontainer';
 
@@ -36,6 +36,8 @@ class InfoContainer_Install {
 			$containers = $wpdb->prefix . 'infocontainer_containers';
 			$inspections = $wpdb->prefix . 'infocontainer_inspections';
 			$photos = $wpdb->prefix . 'infocontainer_photos';
+			$ai_runs = $wpdb->prefix . 'infocontainer_ai_runs';
+			$ai_reviews = $wpdb->prefix . 'infocontainer_ai_reviews';
 			$collate = $wpdb->get_charset_collate();
 
 			$sql = "CREATE TABLE $containers (
@@ -47,6 +49,57 @@ class InfoContainer_Install {
 				PRIMARY KEY  (id),
 				UNIQUE KEY identifier (identifier)
 			) $collate;";
+			dbDelta( $sql );
+			if ( $wpdb->last_error ) {
+				return self::failure();
+			}
+
+			$sql = "CREATE TABLE $ai_runs (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				operation varchar(32) NOT NULL,
+				inspection_id bigint(20) unsigned DEFAULT NULL,
+				client_request_id varchar(36) NOT NULL,
+				created_by bigint(20) unsigned NOT NULL,
+				created_at_utc datetime NOT NULL,
+				updated_at_utc datetime NOT NULL,
+				status varchar(24) NOT NULL,
+				processing_expires_at_utc datetime DEFAULT NULL,
+				model_configured varchar(100) NOT NULL,
+				model_used varchar(100) NOT NULL DEFAULT '',
+				prompt_version varchar(32) NOT NULL,
+				input_fingerprint char(64) NOT NULL,
+				input_snapshot longtext NOT NULL,
+				source_fingerprint char(64) NOT NULL,
+				proposal longtext DEFAULT NULL,
+				usage_json text DEFAULT NULL,
+				provider_response_id varchar(190) NOT NULL DEFAULT '',
+				error_code varchar(64) NOT NULL DEFAULT '',
+				error_message varchar(255) NOT NULL DEFAULT '',
+				completed_at_utc datetime DEFAULT NULL,
+				PRIMARY KEY  (id),
+				UNIQUE KEY operation_request (operation,client_request_id),
+				KEY inspection_created (inspection_id,created_at_utc),
+				KEY author_created (created_by,created_at_utc),
+				KEY status_expires (status,processing_expires_at_utc)
+			) ENGINE=InnoDB $collate;";
+			dbDelta( $sql );
+			if ( $wpdb->last_error ) {
+				return self::failure();
+			}
+
+			$sql = "CREATE TABLE $ai_reviews (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				run_id bigint(20) unsigned NOT NULL,
+				client_review_id varchar(36) NOT NULL,
+				reviewed_by bigint(20) unsigned NOT NULL,
+				action varchar(16) NOT NULL,
+				reviewed_content longtext DEFAULT NULL,
+				source_fingerprint char(64) NOT NULL,
+				created_at_utc datetime NOT NULL,
+				PRIMARY KEY  (id),
+				UNIQUE KEY run_review (run_id,client_review_id),
+				KEY run_created (run_id,created_at_utc)
+			) ENGINE=InnoDB $collate;";
 			dbDelta( $sql );
 			if ( $wpdb->last_error ) {
 				return self::failure();
@@ -101,7 +154,7 @@ class InfoContainer_Install {
 				return self::failure();
 			}
 			// Draft-state checks and simultaneous uploads rely on row-level locks.
-			foreach ( array( $inspections, $photos ) as $transactional_table ) {
+			foreach ( array( $inspections, $photos, $ai_runs, $ai_reviews ) as $transactional_table ) {
 				$table_status = $wpdb->get_row( $wpdb->prepare( 'SHOW TABLE STATUS LIKE %s', $wpdb->esc_like( $transactional_table ) ), ARRAY_A );
 				if ( $wpdb->last_error || ! $table_status || 'innodb' !== strtolower( $table_status['Engine'] ) ) {
 					return self::failure( 503 );
@@ -110,6 +163,10 @@ class InfoContainer_Install {
 
 			if ( ! self::verify_table( $containers, array( 'id', 'identifier', 'iso_code', 'created_by', 'created_at_utc' ), array( 'id' ), array( 'identifier' ) )
 				|| ! self::verify_table( $inspections, array( 'id', 'container_id', 'identifier_snapshot', 'iso_code_snapshot', 'inspection_type', 'inspected_at_utc', 'observations', 'status', 'created_by', 'created_at_utc' ), array( 'id' ), array(), 'container_id' ) ) {
+				return self::failure();
+			}
+			if ( ! self::verify_table( $ai_runs, array( 'id', 'operation', 'inspection_id', 'client_request_id', 'created_by', 'created_at_utc', 'updated_at_utc', 'status', 'processing_expires_at_utc', 'model_configured', 'model_used', 'prompt_version', 'input_fingerprint', 'input_snapshot', 'source_fingerprint', 'proposal', 'usage_json', 'provider_response_id', 'error_code', 'error_message', 'completed_at_utc' ), array( 'id' ), array( 'operation', 'client_request_id' ), 'inspection_id' )
+				|| ! self::verify_table( $ai_reviews, array( 'id', 'run_id', 'client_review_id', 'reviewed_by', 'action', 'reviewed_content', 'source_fingerprint', 'created_at_utc' ), array( 'id' ), array( 'run_id', 'client_review_id' ), 'run_id' ) ) {
 				return self::failure();
 			}
 
@@ -190,16 +247,21 @@ class InfoContainer_Install {
 
 	/** Avoid accepting a partially successful dbDelta update on an existing table. */
 	private static function verify_column( $name, array $column ) {
-		if ( ( 'captured_at_utc' === $name ? 'YES' : 'NO' ) !== $column['Null'] ) {
+		$nullable = in_array( $name, array( 'captured_at_utc', 'processing_expires_at_utc', 'proposal', 'usage_json', 'completed_at_utc', 'reviewed_content' ), true );
+		// inspection_id is required in photos and optional in AI runs.
+		if ( 'inspection_id' !== $name && ( $nullable ? 'YES' : 'NO' ) !== $column['Null'] ) {
 			return false;
 		}
 		$type = strtolower( $column['Type'] );
-		if ( in_array( $name, array( 'id', 'container_id', 'inspection_id', 'created_by', 'updated_by', 'byte_size' ), true ) ) {
+		if ( in_array( $name, array( 'id', 'container_id', 'inspection_id', 'created_by', 'updated_by', 'byte_size', 'run_id', 'reviewed_by' ), true ) ) {
 			return 1 === preg_match( '/^bigint(?:\([0-9]+\))? unsigned$/D', $type )
 				&& ( 'id' !== $name || false !== strpos( $column['Extra'], 'auto_increment' ) );
 		}
 		if ( in_array( $name, array( 'width', 'height' ), true ) ) {
 			return 1 === preg_match( '/^int(?:\([0-9]+\))? unsigned$/D', $type );
+		}
+		if ( 'status' === $name ) {
+			return in_array( $type, array( 'varchar(20)', 'varchar(24)' ), true );
 		}
 		$types = array(
 			'identifier' => 'varchar(11)', 'identifier_snapshot' => 'varchar(11)',
@@ -212,6 +274,16 @@ class InfoContainer_Install {
 			'original_filename' => 'varchar(255)', 'mime_type' => 'varchar(32)',
 			'sha256' => 'char(64)', 'captured_at_utc' => 'datetime',
 			'updated_at_utc' => 'datetime',
+			'operation' => 'varchar(32)', 'client_request_id' => 'varchar(36)',
+			'processing_expires_at_utc' => 'datetime',
+			'model_configured' => 'varchar(100)', 'model_used' => 'varchar(100)',
+			'prompt_version' => 'varchar(32)', 'input_fingerprint' => 'char(64)',
+			'input_snapshot' => 'longtext', 'source_fingerprint' => 'char(64)',
+			'proposal' => 'longtext', 'usage_json' => 'text',
+			'provider_response_id' => 'varchar(190)', 'error_code' => 'varchar(64)',
+			'error_message' => 'varchar(255)', 'completed_at_utc' => 'datetime',
+			'client_review_id' => 'varchar(36)', 'action' => 'varchar(16)',
+			'reviewed_content' => 'longtext',
 		);
 		return isset( $types[ $name ] ) && $type === $types[ $name ];
 	}
