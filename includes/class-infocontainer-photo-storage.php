@@ -422,7 +422,10 @@ class InfoContainer_Photo_Storage {
 		$hash = hash_init( 'sha256' );
 		$tail = '';
 		$size = 0;
-		$php_tag_pattern = filter_var( ini_get( 'short_open_tag' ), FILTER_VALIDATE_BOOLEAN ) ? '/<\?/' : '/<\?(?:php|=)/i';
+		// A raw `<?` byte pair is common in compressed/binary image data and is
+		// not, by itself, an executable PHP tag.  Only reject PHP's explicit
+		// opening forms; MIME validation and GD decoding remain authoritative.
+		$php_tag_pattern = '/<\?(?:php\b|=)/i';
 		while ( ! feof( $handle ) ) {
 			$chunk = fread( $handle, 65536 );
 			if ( false === $chunk || ( '' === $chunk && ! feof( $handle ) ) ) {
