@@ -67,7 +67,8 @@ class InfoContainer_OpenAI_Client {
 
 	private function api_key() {
 		$value = defined( 'INFOCONTAINER_OPENAI_API_KEY' ) ? INFOCONTAINER_OPENAI_API_KEY : getenv( 'INFOCONTAINER_OPENAI_API_KEY' );
-		return is_string( $value ) ? trim( $value ) : '';
+		if ( is_string( $value ) && '' !== trim( $value ) ) return trim( $value );
+		return class_exists( 'InfoContainer_OpenAI_Settings' ) ? InfoContainer_OpenAI_Settings::stored_key() : '';
 	}
 	private function read_stream( $handle, $expected ) {
 		if ( ! is_resource( $handle ) || $expected < 1 ) return $this->error( 'image_read', 'No se pudo leer una imagen privada.', 500 );

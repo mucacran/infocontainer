@@ -3,7 +3,7 @@
  * Plugin Name:       InfoContainer
  * Plugin URI:        https://github.com/mucacran/infocontainer
  * Description:       Contenedores, inspecciones y fotografías privadas mediante una API REST protegida.
- * Version:           1.3.5
+ * Version:           1.3.6
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            mucacran
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'INFOCONTAINER_VERSION', '1.3.5' );
+define( 'INFOCONTAINER_VERSION', '1.3.6' );
 define( 'INFOCONTAINER_FILE', __FILE__ );
 define( 'INFOCONTAINER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'INFOCONTAINER_URL', plugin_dir_url( __FILE__ ) );
@@ -34,6 +34,7 @@ require_once INFOCONTAINER_PATH . 'includes/class-infocontainer-openai-client.ph
 require_once INFOCONTAINER_PATH . 'includes/class-infocontainer-ai-repository.php';
 require_once INFOCONTAINER_PATH . 'includes/class-infocontainer-ai-rest-api.php';
 require_once INFOCONTAINER_PATH . 'includes/class-infocontainer-admin-diagnostic.php';
+require_once INFOCONTAINER_PATH . 'includes/class-infocontainer-openai-settings.php';
 
 /**
  * Runs when the plugin is activated.
@@ -75,6 +76,10 @@ function infocontainer_init() {
 	InfoContainer_Install::maybe_upgrade();
 	$diagnostic = new InfoContainer_Admin_Diagnostic();
 	add_action( 'admin_menu', array( $diagnostic, 'register' ) );
+	$settings = new InfoContainer_OpenAI_Settings();
+	add_action( 'admin_menu', array( $settings, 'register' ) );
+	add_action( 'admin_post_infocontainer_save_openai', array( $settings, 'save' ) );
+	add_action( 'admin_post_infocontainer_delete_openai', array( $settings, 'delete' ) );
 	add_action( 'admin_post_infocontainer_storage_test', array( $diagnostic, 'handle_test' ) );
 	add_action( 'rest_api_init', 'infocontainer_register_rest_routes' );
 	add_action( 'init', 'infocontainer_load_textdomain' );
