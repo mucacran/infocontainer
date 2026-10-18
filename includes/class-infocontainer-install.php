@@ -9,6 +9,7 @@ class InfoContainer_Install {
 	const DB_VERSION = '1.2.0';
 	const VERSION_OPTION = 'infocontainer_db_version';
 	const CAPABILITY = 'manage_infocontainer';
+	const OPERATOR_ROLE = 'infocontainer_operator';
 
 	/** @var WP_Error|null Installation failure for the current request. */
 	private static $error = null;
@@ -17,6 +18,46 @@ class InfoContainer_Install {
 	public static function maybe_upgrade() {
 		if ( self::DB_VERSION !== get_option( self::VERSION_OPTION, '' ) ) {
 			return self::install();
+		}
+		return self::register_roles();
+	}
+
+	/**
+	 * Ensure permissions independently of the data schema, including active updates.
+	 *
+	 * Never assign users or overwrite an incompatible pre-existing role. Only
+	 * missing grants are written, so an unchanged installation performs no writes.
+	 *
+	 * @return true|WP_Error
+	 */
+	public static function register_roles() {
+		$capabilities = array( 'read' => true, self::CAPABILITY => true );
+		$operator = get_role( self::OPERATOR_ROLE );
+		if ( $operator && array_diff_key( $operator->capabilities, $capabilities ) ) {
+			self::$error = new WP_Error(
+				'infocontainer_operator_role_conflict',
+				'El rol infocontainer_operator ya contiene otras capacidades. Un administrador debe revisar el conflicto sin reasignar usuarios automáticamente.',
+				array( 'status' => 503 )
+			);
+			return self::$error;
+		}
+		$administrators = get_role( 'administrator' );
+		if ( ! $administrators ) {
+			return self::failure();
+		}
+		if ( ! $operator ) {
+			$operator = add_role( self::OPERATOR_ROLE, 'Operador de InfoContainer', $capabilities );
+		}
+		if ( ! $operator ) {
+			return self::failure();
+		}
+		foreach ( $capabilities as $capability => $grant ) {
+			if ( ! isset( $operator->capabilities[ $capability ] ) || true !== $operator->capabilities[ $capability ] ) {
+				$operator->add_cap( $capability, $grant );
+			}
+		}
+		if ( empty( $administrators->capabilities[ self::CAPABILITY ] ) ) {
+			$administrators->add_cap( self::CAPABILITY );
 		}
 		return true;
 	}
@@ -170,12 +211,9 @@ class InfoContainer_Install {
 				return self::failure();
 			}
 
-			$administrators = get_role( 'administrator' );
-			if ( ! $administrators ) {
-				return self::failure();
-			}
-			if ( ! $administrators->has_cap( self::CAPABILITY ) ) {
-				$administrators->add_cap( self::CAPABILITY );
+			$permissions = self::register_roles();
+			if ( is_wp_error( $permissions ) ) {
+				return $permissions;
 			}
 
 			// Only mark the version once tables and required indexes are verified.

@@ -16,6 +16,27 @@ class InfoContainer_Photo_Storage {
 	const MAX_DECODE_BYTES     = 134217728; // 128 MiB.
 	const DECODE_RESERVE_BYTES = 33554432; // 32 MiB, in addition to eight bytes/pixel.
 
+	/** Read-only location diagnostics; never creates directories or changes permissions. */
+	public function diagnostic() {
+		$configured = defined( 'INFOCONTAINER_PRIVATE_ROOT' ) ? INFOCONTAINER_PRIVATE_ROOT : dirname( untrailingslashit( ABSPATH ) ) . '/infocontainer-private';
+		$configured = apply_filters( 'infocontainer_private_root', $configured );
+		$result = array( 'configured' => is_string( $configured ) ? $this->normalize_path( $configured ) : '', 'exists' => false, 'outside_public' => false, 'resolved' => '', 'ancestor' => '', 'ancestor_readable' => false, 'ancestor_writable' => false, 'links_in_path' => false );
+		if ( ! is_string( $configured ) || ! $this->is_absolute( $configured ) || false !== strpos( $configured, "\0" ) ) { return $result; }
+		$configured = $this->normalize_path( $configured );
+		$probe = $configured;
+		while ( ! file_exists( $probe ) ) { $parent = dirname( $probe ); if ( $parent === $probe ) { break; } $probe = $parent; }
+		$result['ancestor'] = is_dir( $probe ) && false !== realpath( $probe ) ? $this->normalize_path( realpath( $probe ) ) : '';
+		$result['ancestor_readable'] = '' !== $result['ancestor'] && is_readable( $probe );
+		$result['ancestor_writable'] = '' !== $result['ancestor'] && is_writable( $probe );
+		$result['exists'] = is_dir( $configured );
+		$result['resolved'] = false !== realpath( $configured ) ? $this->normalize_path( realpath( $configured ) ) : '';
+		$public = array( $this->normalize_path( ABSPATH ) );
+		if ( isset( $_SERVER['DOCUMENT_ROOT'] ) && is_string( $_SERVER['DOCUMENT_ROOT'] ) && '' !== $_SERVER['DOCUMENT_ROOT'] ) { $public[] = $this->normalize_path( $_SERVER['DOCUMENT_ROOT'] ); }
+		$result['outside_public'] = '' !== $result['resolved'] ? $this->is_private( $result['resolved'], $public ) : $this->is_private( $configured, $public );
+		for ( $path = $configured; $path !== dirname( $path ); $path = dirname( $path ) ) { if ( is_link( $path ) ) { $result['links_in_path'] = true; break; } }
+		return $result;
+	}
+
 	/**
 	 * Resolve/create the private root and check its actual filesystem location.
 	 *

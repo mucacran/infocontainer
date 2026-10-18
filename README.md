@@ -35,6 +35,10 @@ La instalación usa `dbDelta()` y es repetible. La versión del esquema se guard
 
 Todas las rutas requieren un usuario autenticado y `current_user_can('manage_infocontainer')`. La capacidad se concede inicialmente al rol administrador durante la activación y actualización del plugin.
 
+Desde la versión `1.3.1` también se registra **Operador de InfoContainer** (`infocontainer_operator`), con únicamente `read` y `manage_infocontainer`. Se crea tanto al activar como al cargar una instalación activa después de reemplazar sus archivos, independientemente del esquema `1.2.0`. No se asigna a ningún usuario automáticamente ni se cambian sus roles. La comprobación repetida no escribe si los permisos ya están correctos y conserva el acceso de los administradores.
+
+`manage_infocontainer` permite las operaciones actuales del plugin, incluidas escrituras, fotografías y solicitudes de IA: **el operador no es un rol de solo lectura**. No obtiene permisos para administrar WordPress, plugins o usuarios. Si otro componente ya creó el mismo slug con capacidades adicionales, se devuelve `infocontainer_operator_role_conflict` (`503`) sin sobrescribirlo ni reasignar usuarios; un administrador debe revisar ese conflicto. La guía de actualización y creación de cuenta está en [docs/rol-operador.md](docs/rol-operador.md).
+
 Los usuarios autorizados comparten los datos: `created_by` registra quién creó cada registro, pero no limita la lectura al autor. Esta etapa no incluye aislamiento por empresa.
 
 - Desde WordPress: autenticación por cookies y cabecera `X-WP-Nonce` con un nonce para `wp_rest`.
@@ -158,7 +162,7 @@ Los errores usan la estructura REST de WordPress: `code`, `message` y `data.stat
 ## Activar y comprobar en LocalWP
 
 1. Inicia el sitio `infocontainer` en Local y abre su administración WordPress.
-2. Abre **Plugins**, localiza **InfoContainer**, comprueba la versión `1.2.0` y pulsa **Activar**. Si ya está activo, abre una página de WordPress para ejecutar la comprobación de actualización.
+2. Abre **Plugins**, localiza **InfoContainer**, comprueba la versión `1.3.1` y pulsa **Activar**. Si ya está activo, abre una página de WordPress para ejecutar la comprobación de actualización.
 3. En Local, selecciona el sitio y comprueba su dominio y HTTPS. Confía en su certificado desde la opción **Trust/Confiar** de SSL. Usa ese dominio exacto en los ejemplos. Si TLS falla, resuelve la confianza del certificado; no desactives su validación.
 4. Abre **Database → Open Adminer** o la herramienta de base de datos disponible en tu versión de Local. Comprueba las dos tablas con el prefijo real, las claves primarias, el índice único de `identifier` y el índice de `container_id`.
 5. En **Usuarios → Perfil** de un administrador, crea una contraseña de aplicación con un nombre identificable, como `InfoContainer pruebas Local`. Guárdala fuera del repositorio. Comprueba que WordPress ofrece esta función en el sitio.
@@ -179,7 +183,7 @@ wp cap list administrator
 wp db prefix
 ```
 
-La opción debe mostrar `1.1.0` y la lista del rol debe incluir `manage_infocontainer`. Si prefieres activar por CLI: `wp plugin activate infocontainer`. Tras conocer el prefijo, puedes comprobar índices con `wp db query "SHOW INDEX FROM wp_infocontainer_containers;"`, `wp db query "SHOW INDEX FROM wp_infocontainer_inspections;"` y `wp db query "SHOW INDEX FROM wp_infocontainer_photos;"`, sustituyendo `wp_` por el prefijo real.
+La opción debe mostrar `1.2.0` y la lista del rol administrador debe incluir `manage_infocontainer`. `wp cap list infocontainer_operator` debe mostrar únicamente `read` y `manage_infocontainer`. Si prefieres activar por CLI: `wp plugin activate infocontainer`. Tras conocer el prefijo, puedes comprobar índices con `wp db query "SHOW INDEX FROM wp_infocontainer_containers;"`, `wp db query "SHOW INDEX FROM wp_infocontainer_inspections;"` y `wp db query "SHOW INDEX FROM wp_infocontainer_photos;"`, sustituyendo `wp_` por el prefijo real.
 
 La disponibilidad de PHP, WP-CLI, autenticación y certificado depende de Local y de la configuración del sitio. Los comandos documentados son procedimientos de comprobación; no constituyen resultados de pruebas ejecutadas.
 
@@ -647,6 +651,14 @@ Los usuarios temporales ID `3`, `4` y `5`, junto con las contraseñas de aplicac
 No quedan pendientes los cinco bloques ni la concurrencia. El transporte nativo de `Invoke-WebRequest` continúa fallando en este equipo; no se alteró su configuración de seguridad para forzarlo. WordPress `6.0` se verificará posteriormente en otra instalación.
 
 ## Etapa 2: fotografías privadas
+
+### Diagnóstico y prueba administrativa de almacenamiento (1.3.4)
+
+La prueba corregida trata `Photo_Storage::open()` como un recurso: usa `fstat()`, lee el contenido y calcula el hash, cierra siempre el recurso y distingue fallo de lectura de fallo de limpieza.
+
+La pantalla **Herramientas → Diagnóstico de InfoContainer** es solo para administradores (`manage_options`). Su consulta normal no crea carpetas ni cambia permisos. La versión 1.3.3 añade una acción POST separada, protegida por nonce, que acepta únicamente el PNG sintético `artifacts/infocontainer-prueba-sin-datos-reales.png` (SHA-256 `738058ab3581c712288647f79befee81cc359f52cc1377884423f270131bd8c6`). La acción reutiliza la validación y el almacenamiento reales, crea la raíz si hace falta, escribe un archivo nuevo, verifica tamaño/hash, lo elimina y confirma la limpieza. No crea contenedores, inspecciones, adjuntos de Medios ni registros de fotografías.
+
+Esta prueba comprueba almacenamiento del servidor. No demuestra subida desde Android, descargas REST ni privacidad HTTP completa.
 
 El contrato, categorías, límites, migración y tres ejemplos PowerShell de fotografías están en [docs/etapa-2.md](docs/etapa-2.md). Los tres bloques se ejecutaron realmente en LocalWP usando el helper HTTPS de este README, ampliado con `-FilePath` para multipart y `-DownloadPath` para guardar bytes originales.
 
