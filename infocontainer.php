@@ -3,7 +3,7 @@
  * Plugin Name:       InfoContainer
  * Plugin URI:        https://github.com/mucacran/infocontainer
  * Description:       Contenedores, inspecciones y fotografías privadas mediante una API REST protegida.
- * Version:           1.3.6
+ * Version:           1.3.7
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            mucacran
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'INFOCONTAINER_VERSION', '1.3.6' );
+define( 'INFOCONTAINER_VERSION', '1.3.7' );
 define( 'INFOCONTAINER_FILE', __FILE__ );
 define( 'INFOCONTAINER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'INFOCONTAINER_URL', plugin_dir_url( __FILE__ ) );
